@@ -114,6 +114,16 @@ export const defaultPlugins = (): DefaultPlugin[] => {
 };
 
 /**
+ * A plugin a fork compiled into the bundle that stands for no remote default (this fork's
+ * `builtin:claude-agent`): it has no repository, so no version to check for and nothing to
+ * vendor. The remote defaults are `defaultPlugins()` without these.
+ */
+export function isForkBuiltin(spec: string): boolean {
+  const builtin = /^builtin:([\w-]+)$/i.exec(spec.trim());
+  return builtin !== null && BUILTIN_REPLACES[builtin[1]] === undefined;
+}
+
+/**
  * The address an update check asks about for an installed plugin, or null when there is
  * nothing to ask — the plugin follows a branch already (Reload is its update), or it came
  * from somewhere with no versions to compare.
