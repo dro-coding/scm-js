@@ -1,8 +1,9 @@
-import { copyFileSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 // @ts-expect-error - a plain .mjs module, shared with the tests.
 import { buildNotices } from './scripts/lib/notices.mjs'
 
@@ -19,6 +20,53 @@ function shortVersion(v: string): string {
   return channel ? `${v.slice(0, dash)}-${channel}` : v.slice(0, dash)
 }
 
+/**
+ * The euddraft compiler's runtime (`src/euddraft/`, this fork's): Pyodide's core files from
+ * the `pyodide` package and the two wheels in `src/euddraft/runtime/`, served together from
+ * `plugin-runtime/euddraft/<hash of their content>/`. Together, because Pyodide finds its
+ * files beside `pyodide.mjs`; under their own names, because `loadPackage` reads a wheel's
+ * name, version and tags out of its file name, which Vite's hashed asset names would break;
+ * under a hash, because nginx serves `/plugin-runtime/` as immutable (docker/nginx.conf).
+ * Nothing loads them until a map is compiled. The worker learns the folder from
+ * `__EUDDRAFT_RUNTIME__`.
+ */
+function euddraftRuntime(): Plugin {
+  const root = fileURLToPath(new URL('.', import.meta.url))
+  const pyodideDir = join(root, 'node_modules', 'pyodide')
+  const runtimeDir = join(root, 'src', 'euddraft', 'runtime')
+  const files = new Map<string, string>()
+  for (const name of ['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json']) {
+    files.set(name, join(pyodideDir, name))
+  }
+  for (const name of readdirSync(runtimeDir).filter((f) => f.endsWith('.whl'))) files.set(name, join(runtimeDir, name))
+  const missing = [...files.values()].filter((p) => !existsSync(p))
+  if (missing.length) throw new Error(`euddraft runtime: missing ${missing.join(', ')} (npm ci installs pyodide)`)
+  const hash = createHash('sha256')
+  for (const [name, path] of [...files].sort(([a], [b]) => a.localeCompare(b))) hash.update(name).update(readFileSync(path))
+  const dir = `plugin-runtime/euddraft/${hash.digest('hex').slice(0, 12)}/`
+  // typing_extensions before eudplib, which needs it.
+  const wheels = [...files.keys()].filter((n) => n.endsWith('.whl')).sort((a, b) => Number(b.startsWith('typing_')) - Number(a.startsWith('typing_')))
+  const pyodideVersion = JSON.parse(readFileSync(join(pyodideDir, 'package.json'), 'utf8')).version as string
+  const types: Record<string, string> = { mjs: 'text/javascript', wasm: 'application/wasm', json: 'application/json', zip: 'application/zip', whl: 'application/octet-stream' }
+  return {
+    name: 'scmjs-euddraft-runtime',
+    config: () => ({ define: { __EUDDRAFT_RUNTIME__: JSON.stringify({ dir, pyodide: pyodideVersion, wheels }) } }),
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? '').split('?')[0]
+        const at = path.indexOf(`/${dir}`)
+        const source = at >= 0 ? files.get(path.slice(at + dir.length + 1)) : undefined
+        if (!source) return next()
+        res.setHeader('Content-Type', types[source.split('.').pop() ?? ''] ?? 'application/octet-stream')
+        res.end(readFileSync(source))
+      })
+    },
+    generateBundle() {
+      for (const [name, path] of files) this.emitFile({ type: 'asset', fileName: `${dir}${name}`, source: readFileSync(path) })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
   // kascade is only imported inside the extraction worker, on the Remastered route, so the
@@ -27,6 +75,7 @@ export default defineConfig(() => ({
   optimizeDeps: { include: ['kascade'] },
   plugins: [
     react(),
+    euddraftRuntime(),
     // `index.html` carries the boot splash (the markup that paints before the bundle
     // evaluates), and its version line has to say the same thing `src/version.ts` does.
     // Vite substitutes `%FOO%` in HTML only for env vars, so this does that one token.

@@ -22,6 +22,8 @@ import type { PluginManifest } from "./api";
 import type { BuiltinPlugin } from "./loader";
 import agentManifest from "../agent/plugin.json";
 import agentIcon from "../agent/icon.svg?url";
+import euddraftManifest from "../euddraft/plugin.json";
+import euddraftIcon from "../euddraft/icon.svg?url";
 
 const modules = import.meta.glob("../../plugins/*/plugin.ts");
 const manifests = import.meta.glob("../../plugins/*/plugin.json", { eager: true, import: "default" }) as Record<string, PluginManifest>;
@@ -57,4 +59,11 @@ BUILTIN_PLUGINS["claude-agent"] = {
   manifest: { ...(agentManifest as PluginManifest), entry: "plugin.ts" },
   iconUrl: agentIcon,
   load: () => import("../agent/plugin"),
+};
+
+// The fork's euddraft compiler (`src/euddraft`), kept and listed the same way.
+BUILTIN_PLUGINS["euddraft"] = {
+  manifest: { ...(euddraftManifest as PluginManifest), entry: "plugin.ts" },
+  iconUrl: euddraftIcon,
+  load: () => import("../euddraft/plugin"),
 };

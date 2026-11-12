@@ -266,6 +266,23 @@ offline (`scripts/bundle-plugin-runtimes.mjs`), and add its license files to the
 | [typing_extensions](https://github.com/python/typing_extensions) | a dependency of eudplib, as Pyodide publishes it | PSF-2.0 |
 | [Monaco Editor](https://github.com/microsoft/monaco-editor) | the TrigScript code editor, the plugin's own build of it served from jsDelivr at a tag of `plugin-trigscript`; not carried by any build | MIT, Microsoft Corporation |
 
+### The euddraft compiler (dro-coding/scm-js)
+
+This fork's **Tools ▸ euddraft…** (`src/euddraft/`) builds maps with euddraft in the
+browser. Every build of the fork carries its runtime: the files below are served from
+`plugin-runtime/euddraft/<hash>/` and compiled into the bundle, nothing is fetched from a
+third party, and their license texts are in `src/euddraft/runtime/licenses/` and in
+`THIRD-PARTY-NOTICES.txt`.
+
+| Project | Use | License |
+| --- | --- | --- |
+| [euddraft](https://github.com/armoha/euddraft) v0.11.0.1 | `pluginLoader.py`, `readconfig.py`, its eight bundled plugins and `lib/` (draw, sqc, soundlooper), unchanged; the build follows its `applyeuddraft.py` without freeze | MIT, copyright 2014-2017 trgk |
+| [eudplib](https://github.com/armoha/eudplib) 0.81.0 | the Pyodide wheel built by scm-js/plugin-eudplib (below), and epScript (`src/epscript`) compiled to WebAssembly from its unchanged source (`scripts/build-epscript.mjs`) | MIT, trgk and Armoha |
+| [scm-js/plugin-eudplib](https://github.com/scm-js/plugin-eudplib) v0.6.0 | the eudplib wheel and the archive shim (`mpqshim.py`); its archive code (`archive.ts`) adapted | MIT, copyright 2026 scmJS |
+| [Pyodide](https://github.com/pyodide/pyodide) 314.0.7 | CPython compiled to WebAssembly, from the `pyodide` npm package, redistributed unchanged | MPL-2.0, Pyodide contributors; CPython and its standard library under the PSF License |
+| [typing_extensions](https://github.com/python/typing_extensions) 4.15.0 | a dependency of eudplib, as Pyodide publishes it | PSF-2.0 |
+| [Emscripten](https://github.com/emscripten-core/emscripten) 5.0.3 | the compiler of the epScript build, and the loader it generated (`epscript.mjs`) | MIT or University of Illinois/NCSA |
+
 ### In the desktop app
 
 | Project | Use | License |
@@ -385,4 +402,7 @@ Pyodide is licensed under the Mozilla Public License, Version 2.0. Builds that c
 (the desktop app and the container image) include its files unmodified, its license text in
 `plugin-runtime/eudplib/<version>/licenses/pyodide-LICENSE` and in `THIRD-PARTY-NOTICES.txt`,
 and its source is available at [github.com/pyodide/pyodide](https://github.com/pyodide/pyodide).
+Every build of the dro-coding/scm-js fork carries it too, unmodified, for its euddraft
+compiler: the license text is in `src/euddraft/runtime/licenses/pyodide-LICENSE.txt` and in
+`THIRD-PARTY-NOTICES.txt`.
 The full license is at [mozilla.org/MPL/2.0](https://www.mozilla.org/MPL/2.0/).
