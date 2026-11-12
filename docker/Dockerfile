@@ -28,6 +28,9 @@ LABEL org.opencontainers.image.title="scmJS" \
       org.opencontainers.image.licenses="MIT"
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+# Server-level additions (docker/server.d/README.md): none here, only a build context that
+# adds a *.conf beside the README puts one in.
+COPY docker/server.d/ /etc/nginx/server.d/
 COPY dist/ /usr/share/nginx/html/
 
 EXPOSE 80
