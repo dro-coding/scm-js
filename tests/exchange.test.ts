@@ -3,14 +3,15 @@ import { mapFiles } from "./support/maps";
 import { describe, expect, it } from "vitest";
 import { createScenario } from "../src/formats/chk/create";
 import { parseScenario } from "../src/formats/chk/scenario";
-import { ActionFlag, ActionType, PlayerGroup, TRIGGER_STRIDE, type TriggerRecord } from "../src/formats/chk/sections/triggers";
+import { ActionFlag, ActionType, ConditionType, PlayerGroup, TRIGGER_STRIDE, type TriggerRecord } from "../src/formats/chk/sections/triggers";
 import { getString } from "../src/formats/chk/sections/strings";
 import { TriggerTextError } from "../src/formats/triggers/text";
 import {
-  applyStringImport, decodeTrg, encodeTrg, escapeStringText, formatStringTable, parseStringTable, readTriggerFile, triggerFormatOf, triggersFromText, triggersToText, unescapeStringText,
+  applyStringImport, decodeTrg, encodeTrg, escapeStringText, formatStringTable, parsePastedTriggers, parseStringTable, readTriggerFile, replaceWithPasted, triggerFormatOf,
+  triggersFromText, triggersToText, unescapeStringText,
 } from "../src/editor/exchange";
 import { internString } from "../src/editor/settings";
-import { newAction, newTrigger } from "../src/editor/triggers";
+import { applyTriggers, newAction, newTrigger } from "../src/editor/triggers";
 import { loadMap } from "../src/formats/mpq/scm";
 
 function fresh() {
@@ -62,6 +63,63 @@ describe("trigger files", () => {
     expect(readTriggerFile(scn, "x.trg", encodeTrg(triggers))).toEqual(triggers);
     const bytes = new Uint8Array([...triggersToText(scn, triggers)].map((c) => c.charCodeAt(0)));
     expect(readTriggerFile(scn, "x.txt", bytes).length).toBe(2);
+  });
+});
+
+describe("pasted triggers (Import Triggers ▸ Pasted text)", () => {
+  const PASTE = 'Trigger("Player 2"){\nConditions:\n\tAlways();\nActions:\n\tDisplay Text Message(Always Display, "Pasted hello");\n}\n\nTrigger("All players"){\nConditions:\nActions:\n\tDefeat();\n}\n';
+  const stringsIn = (scn: ReturnType<typeof fresh>) => scn.strings.strings.filter((s) => s !== null).length;
+
+  it("parses as the box changes without adding a string to the map", () => {
+    const { scn, triggers } = sample();
+    applyTriggers(scn, triggers);
+    const strings = stringsIn(scn);
+    const pasted = parsePastedTriggers(scn, PASTE);
+    expect(pasted.triggers.length).toBe(2);
+    expect(pasted.triggers[0].actions[0].text).toBeLessThan(0);
+    expect(stringsIn(scn)).toBe(strings);
+    expect(scn.triggers.length).toBe(2);
+  });
+
+  it("replaces the whole list and interns only then", () => {
+    const { scn, triggers } = sample();
+    applyTriggers(scn, [...triggers, newTrigger([PlayerGroup.Player3])]);
+    const before = replaceWithPasted(scn, parsePastedTriggers(scn, PASTE));
+    expect(before).toBe(3);
+    expect(scn.triggers.length).toBe(2);
+    expect(scn.triggers[0].actions[0].type).toBe(ActionType.DisplayText);
+    expect(getString(scn.strings, scn.triggers[0].actions[0].text)).toBe("Pasted hello");
+    expect(scn.triggers[1].actions[0].type).toBe(ActionType.Defeat);
+  });
+
+  it("replaces the briefing list with briefings that start with Mission Briefing", () => {
+    const scn = fresh();
+    const before = replaceWithPasted(scn, parsePastedTriggers(scn, 'Trigger("All players"){\nConditions:\nActions:\n\tWait(1000);\n}\n', true), true);
+    expect(before).toBe(0);
+    expect(scn.briefing.length).toBe(1);
+    expect(scn.briefing[0].conditions[0].type).toBe(ConditionType.Briefing);
+    expect(scn.triggers.length).toBe(0);
+  });
+
+  it("shows the map's list as text that reads back as the same list", () => {
+    // The box opens with triggersToText of the list; applied unedited, nothing would change.
+    const { scn, triggers } = sample();
+    applyTriggers(scn, triggers);
+    const shown = triggersToText(scn, scn.triggers);
+    expect(shown).toContain("Hello");
+    const pasted = parsePastedTriggers(scn, shown);
+    expect(pasted.drafts.byIndex.size).toBe(0);
+    expect(pasted.triggers).toEqual(scn.triggers);
+  });
+
+  it("refuses text with no trigger, and reports the line of a bad one", () => {
+    const scn = fresh();
+    expect(() => parsePastedTriggers(scn, "just some words")).toThrow();
+    expect(() => parsePastedTriggers(scn, "   \n")).toThrow(/no Trigger/);
+    let err: unknown = null;
+    try { parsePastedTriggers(scn, 'Trigger("Player 1"){\nConditions:\nActions:\n\tBogus Action(1);\n}'); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(TriggerTextError);
+    expect((err as TriggerTextError).line).toBe(4);
   });
 });
 

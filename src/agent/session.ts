@@ -11,6 +11,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaContentBlock, BetaContentBlockParam, BetaMessage, BetaMessageParam, BetaToolResultBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import type { PluginApi } from "../plugins/api";
+import { decodeTriggers } from "../formats/chk/sections/triggers";
+import {
+  AttachmentError, attachmentBlocks, attachmentBytes, MAX_CONVERSATION_BYTES, readAttachment, scaleInBrowser,
+  type Attachment, type AttachmentKind, type PickedFile,
+} from "./attachments";
 import { SYSTEM_PROMPT } from "./prompt";
 import { validate } from "./schema";
 import { mapState } from "./tools/map";
@@ -20,8 +25,17 @@ import { MODELS, type AgentSettings } from "./settings";
 
 export type ToolStatus = "streaming" | "approval" | "running" | "done" | "error" | "denied" | "stopped";
 
+/** What the transcript keeps of an attachment: enough to show it, and a picture's preview. */
+export interface SentFile {
+  name: string;
+  kind: AttachmentKind;
+  size: number;
+  /** A data URL, for pictures. */
+  preview?: string;
+}
+
 export type TranscriptItem =
-  | { kind: "user"; id: number; text: string }
+  | { kind: "user"; id: number; text: string; files?: SentFile[] }
   | { kind: "text"; id: number; text: string; done: boolean }
   | { kind: "thinking"; id: number; text: string; done: boolean }
   | {
@@ -53,6 +67,8 @@ export class AgentSession {
   items: TranscriptItem[] = [];
   usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, context: 0 };
   busy = false;
+  /** What the attachments already in the history add to every request (`MAX_CONVERSATION_BYTES`). */
+  attachedBytes = 0;
   private abort: AbortController | null = null;
   private listeners = new Set<Listener>();
   private approvals = new Map<number, (ok: boolean) => void>();
@@ -110,7 +126,24 @@ export class AgentSession {
     this.messages.length = 0;
     this.items = [];
     this.usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, context: 0 };
+    this.attachedBytes = 0;
     this.emit();
+  }
+
+  /** Room left for attachments in this conversation, in bytes as sent. */
+  attachmentRoom(): number {
+    return Math.max(0, MAX_CONVERSATION_BYTES - this.attachedBytes);
+  }
+
+  /** A picked or dropped file as an attachment; throws `AttachmentError` with the reason it cannot go. */
+  readFile(file: PickedFile): Promise<Attachment> {
+    return readAttachment(file, {
+      scale: scaleInBrowser,
+      trgToText: (bytes) => {
+        if (!this.api.document.scenario()) throw new AttachmentError(`${file.name}: a .trg is read against the open map; open one first.`);
+        return this.api.triggers.text.print(decodeTriggers(bytes));
+      },
+    });
   }
 
   /** Undo the changes one finished turn made, as long as they are still the newest entries on the undo stack. */
@@ -131,8 +164,17 @@ export class AgentSession {
     this.pendingNote = `(The user undid the ${undoneCount} change(s) you made in that turn; the map is as it was before it.)`;
   }
 
-  async send(text: string): Promise<void> {
-    if (this.busy || !text.trim()) return;
+  /**
+   * One user message, with any attached files, and the turn it starts. The files go between
+   * the map state and the words, each picture labelled with its name.
+   */
+  async send(text: string, files: readonly Attachment[] = []): Promise<void> {
+    if (this.busy || (!text.trim() && files.length === 0)) return;
+    const size = attachmentBytes(files);
+    if (size > this.attachmentRoom()) {
+      this.push({ kind: "notice", id: nextId++, level: "warn", text: "These files would make the conversation too large to send. Start a new conversation (the arrow at the top) to attach them." });
+      return;
+    }
     const settings = this.settings();
     this.busy = true;
     this.onBusy(true);
@@ -141,10 +183,18 @@ export class AgentSession {
     this.abort = new AbortController();
     const started = performance.now();
     let edits = 0;
-    this.push({ kind: "user", id: nextId++, text });
+    const sent: SentFile[] = files.map((f) => ({ name: f.name, kind: f.kind, size: f.size, ...(f.kind === "image" ? { preview: `data:${f.mediaType};base64,${f.data}` } : {}) }));
+    this.push({ kind: "user", id: nextId++, text, ...(sent.length ? { files: sent } : {}) });
     const note = this.pendingNote ? `${this.pendingNote}\n\n` : "";
     this.pendingNote = "";
-    this.messages.push({ role: "user", content: [{ type: "text", text: `<map_state>\n${mapState(this.api)}\n</map_state>\n\n${note}${text}` }] });
+    const state = `<map_state>\n${mapState(this.api)}\n</map_state>`;
+    this.attachedBytes += size;
+    this.messages.push({
+      role: "user",
+      content: files.length
+        ? [{ type: "text", text: state }, ...attachmentBlocks(files), { type: "text", text: `${note}${text.trim() || "(No message: the attached files are what the user sent.)"}` }]
+        : [{ type: "text", text: `${state}\n\n${note}${text}` }],
+    });
 
     const client = new Anthropic({
       apiKey: settings.apiKey || (settings.baseURL ? "set-by-proxy" : ""),

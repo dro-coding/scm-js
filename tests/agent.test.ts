@@ -11,6 +11,12 @@ import type { PluginApi } from "../src/plugins/api";
 import { validate } from "../src/agent/schema";
 import { TOOL_BY_NAME, TOOL_DEFINITIONS, TOOLS } from "../src/agent/tools/index";
 import { effectOf, LABEL_PREFIX, ToolError, type ToolContext } from "../src/agent/tools/types";
+import {
+  AttachmentError, attachmentBlocks, attachmentBytes, MAX_CONVERSATION_BYTES, MAX_IMAGE_BYTES, readAttachment, toBase64, type PickedFile,
+} from "../src/agent/attachments";
+import { AgentSession } from "../src/agent/session";
+import { DEFAULTS } from "../src/agent/settings";
+import { encodeTriggers } from "../src/formats/chk/sections/triggers";
 
 function setup(width = 64, height = 64): { api: PluginApi; call: (name: string, input?: Record<string, unknown>) => Promise<string> } {
   const store = createStore();
@@ -205,5 +211,65 @@ Actions:
     const { call } = setup();
     await expect(call("terrain_map")).rejects.toThrow(/graphics are not installed/);
     await expect(call("paint_terrain", { terrain: "Dirt", area: { x0: 0, y0: 0, x1: 4, y1: 4 } })).rejects.toThrow(/graphics are not installed/);
+  });
+});
+
+describe("attachments", () => {
+  const file = (name: string, bytes: Uint8Array | string, type = ""): PickedFile => {
+    const data = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
+    return { name, type, size: data.length, arrayBuffer: async () => data.slice().buffer };
+  };
+
+  it("sends text as a plain-text document named after the file, UTF-8 or else Latin-1", async () => {
+    const utf8 = await readAttachment(file("notes.md", "# Plan\nTwo bases each, 한국어 too."));
+    expect(utf8).toMatchObject({ kind: "text", mediaType: "text/plain", data: "# Plan\nTwo bases each, 한국어 too." });
+    const latin1 = await readAttachment(file("export.txt", new Uint8Array([0x63, 0x61, 0x66, 0xe9])));
+    expect(latin1.data).toBe("café");
+    expect(attachmentBlocks([utf8])).toEqual([{ type: "document", title: "notes.md", source: { type: "text", media_type: "text/plain", data: utf8.data } }]);
+  });
+
+  it("sends a picture as a named image block, through the scaler, and a PDF as a document", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    let scaled = 0;
+    const image = await readAttachment(file("Shot.PNG", png), { scale: async (bytes) => { scaled++; return { bytes: bytes.subarray(0, 4), type: "image/png" }; } });
+    expect(scaled).toBe(1);
+    expect(image).toMatchObject({ kind: "image", mediaType: "image/png", data: toBase64(png.subarray(0, 4)) });
+    const pdf = await readAttachment(file("design.pdf", "%PDF-1.7 …", "application/pdf"));
+    expect(pdf.kind).toBe("pdf");
+    expect(attachmentBlocks([image, pdf])).toEqual([
+      { type: "text", text: "Attached picture: Shot.PNG" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: image.data } },
+      { type: "document", title: "design.pdf", source: { type: "base64", media_type: "application/pdf", data: pdf.data } },
+    ]);
+    expect(attachmentBytes([image, pdf])).toBe(image.data.length + pdf.data.length);
+  });
+
+  it("refuses map files, binary files and oversized ones with the reason", async () => {
+    await expect(readAttachment(file("arena.scx", "MPQ\x1a"))).rejects.toThrow(/map file/);
+    await expect(readAttachment(file("tool.exe", new Uint8Array([0x4d, 0x5a, 0, 0, 3, 0])))).rejects.toThrow(/pictures \(PNG, JPEG, GIF, WebP\), PDFs and text/);
+    await expect(readAttachment(file("huge.png", new Uint8Array(MAX_IMAGE_BYTES + 1)))).rejects.toBeInstanceOf(AttachmentError);
+    await expect(readAttachment(file("x.trg", new Uint8Array(2400)))).rejects.toThrow(/needs an open map/);
+  });
+
+  it("prints a .trg as TrigEdit text against the open map, with a note on its strings", async () => {
+    const { api, call } = setup();
+    await call("add_triggers", { text: `Trigger("Player 1"){\nConditions:\n\tAlways();\nActions:\n\tVictory();\n}` });
+    const session = new AgentSession(api, () => DEFAULTS, () => {});
+    const trg = await session.readFile(file("old.trg", encodeTriggers(api.triggers.list())));
+    expect(trg.kind).toBe("text");
+    expect(trg.data).toMatch(/Trigger\("Player 1"\)\{[\s\S]*Victory\(\);/);
+    expect(trg.note).toMatch(/1 trigger\(s\) from a binary \.trg/);
+    expect(attachmentBlocks([trg])[0]).toMatchObject({ type: "document", title: "old.trg", context: trg.note });
+    await expect(session.readFile(file("bad.trg", new Uint8Array(100)))).rejects.toThrow(/not a trigger file/);
+  });
+
+  it("keeps a conversation's attachments under the request size", () => {
+    const { api } = setup();
+    const session = new AgentSession(api, () => DEFAULTS, () => {});
+    expect(session.attachmentRoom()).toBe(MAX_CONVERSATION_BYTES);
+    session.attachedBytes = MAX_CONVERSATION_BYTES - 10;
+    expect(session.attachmentRoom()).toBe(10);
+    session.reset();
+    expect(session.attachmentRoom()).toBe(MAX_CONVERSATION_BYTES);
   });
 });

@@ -39,6 +39,16 @@ branch `feat/claude-agent`. Reader docs: `docs/guide.md#claude-agent`, README fe
   `destructive`, which the approval setting gates), a `describe` line for the transcript
   and `run`. Inputs are sent with `eager_input_streaming`, so the server no longer validates
   them: `schema.ts#validate` does, before every run, and a failure is an error result.
+- **Attachments** (`attachments.ts`, read by `session.readFile`): pictures as image blocks
+  (scaled to 1568 px in the browser, `scaleInBrowser`), PDFs as base64 documents, text as
+  plain-text documents titled with the file name (UTF-8, else Latin-1 as Import Triggers
+  reads), a `.trg` printed through `api.triggers.text.print` with a `context` note that its
+  strings are this map's. Map files and binary files are refused with the reason. They sit
+  between the `<map_state>` block and the words of that one user message, and since the
+  history is append-only they ride along on every later request: `MAX_CONVERSATION_BYTES`
+  (24 MB as sent) caps a conversation under the 32 MB request limit. The panel takes them
+  from Attach, a drop anywhere on it (cancelled and stopped there, or `App.tsx` would open a
+  dropped map file), and a pasted picture.
 
 ## Conventions the tools speak (and the prompt states)
 

@@ -1,20 +1,22 @@
-import { useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { Download, FileText, Upload } from "lucide-react";
-import { commitSettingsAtom, commitTriggersAtom, scenarioAtom, settingsRevisionAtom, triggersRevisionAtom } from "../../atoms/documentAtoms";
+import { ClipboardPaste, Download, FileText, Upload } from "lucide-react";
+import { commitSettingsAtom, commitTriggersAtom, locationsRevisionAtom, scenarioAtom, settingsRevisionAtom, triggersRevisionAtom } from "../../atoms/documentAtoms";
 import { pluginTriggerClaimsAtom } from "../../atoms/pluginAtoms";
 import { locateClaims } from "../../plugins/claims";
 import { mapDescriptionAtom, mapFilePathAtom, mapNameAtom } from "../../atoms/editorAtoms";
 import { closeDialogAtom, pushToastAtom, statusMessageAtom } from "../../atoms/uiAtoms";
 import {
-  applyStringImport, encodeTrg, formatStringTable, parseStringTable, readTriggerFile, triggersToText, type TriggerFileFormat,
+  applyStringImport, encodeTrg, formatStringTable, parsePastedTriggers, parseStringTable, readTriggerFile, replaceWithPasted, triggersToText,
+  type PastedTriggers, type TriggerFileFormat,
 } from "../../editor/exchange";
+import type { Scenario } from "../../formats/chk/scenario";
 import { applyBriefing, applyTriggers } from "../../editor/triggers";
 import { hostTerms } from "../../editor/platform";
 import { getString } from "../../formats/chk/sections/strings";
 import type { TriggerRecord } from "../../formats/chk/sections/triggers";
 import { saveBytes } from "../../services/mapIo";
-import { Button, Check, Field, Group, Select } from "../ui";
+import { Button, Check, Field, Group, Select, TextArea } from "../ui";
 import DialogFrame from "../ui/DialogFrame";
 import type { DialogProps } from "./DialogHost";
 import { msg, pluginText, t, translate } from "../../i18n";
@@ -98,9 +100,32 @@ interface ImportState {
   error: string | null;
 }
 
+type Source = "file" | "paste";
+
+/** Pasted text, parsed (with its strings as drafts) or the reason it does not parse. */
+function usePasted(scenario: Scenario | null, text: string, briefing: boolean): { pasted: PastedTriggers | null; error: string | null } {
+  // Locations, unit names and switch names can change under an open dialog (as `useNames`
+  // in TriggerDialogs.tsx watches them).
+  const rev = useAtomValue(triggersRevisionAtom);
+  const settingsRev = useAtomValue(settingsRevisionAtom);
+  const locationsRev = useAtomValue(locationsRevisionAtom);
+  // Parsing a long list at every keystroke would make typing lag; React parses the last
+  // text it has time for.
+  const deferred = useDeferredValue(text);
+  return useMemo(() => {
+    if (!scenario || !deferred.trim()) return { pasted: null, error: null };
+    try {
+      return { pasted: parsePastedTriggers(scenario, deferred, briefing), error: null };
+    } catch (err) {
+      return { pasted: null, error: err instanceof Error ? err.message : String(err) };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenario, deferred, briefing, rev, settingsRev, locationsRev]);
+}
+
 export function ImportTriggersDialog({ entry }: DialogProps) {
   const scenario = useAtomValue(scenarioAtom);
-  useAtomValue(triggersRevisionAtom);
+  const triggersRev = useAtomValue(triggersRevisionAtom);
   const claims = useAtomValue(pluginTriggerClaimsAtom);
   const commit = useSetAtom(commitTriggersAtom);
   const close = useSetAtom(closeDialogAtom);
@@ -110,6 +135,43 @@ export function ImportTriggersDialog({ entry }: DialogProps) {
   const [replace, setReplace] = useState(false);
   const [state, setState] = useState<ImportState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [source, setSource] = useState<Source>(entry.payload?.source === "paste" ? "paste" : "file");
+  const settingsRev = useAtomValue(settingsRevisionAtom);
+  const locationsRev = useAtomValue(locationsRevisionAtom);
+  // Before anything is pasted, the box shows the list as it is now, all of it, as text: what
+  // a paste will replace, and a copy to edit and paste back.
+  const current = useMemo(
+    () => (scenario ? triggersToText(scenario, target === "briefing" ? scenario.briefing : scenario.triggers, target === "briefing") : ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scenario, target, triggersRev, settingsRev, locationsRev],
+  );
+  const [pasteText, setPasteText] = useState(current);
+  const shown = useRef(current);
+  useEffect(() => {
+    // The list changed under the dialog (an undo, the List choice): follow it while the box
+    // still holds the list it showed, and leave the user's own text alone.
+    if (pasteText === shown.current) setPasteText(current);
+    shown.current = current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+  const edited = pasteText !== current;
+  const box = useRef<HTMLTextAreaElement>(null);
+  // While the box shows the map's own list, focusing it selects all of it, so a Ctrl+V
+  // straight away replaces the whole shown list with the pasted one. (DialogFrame focuses
+  // the first text field when the dialog opens; a mouse click still places the caret.)
+  const selectShown = (el: HTMLTextAreaElement) => {
+    if (el.value !== current) return;
+    el.select();
+    el.scrollTop = 0;
+  };
+  useEffect(() => {
+    const el = box.current;
+    if (source !== "paste" || !el) return;
+    if (document.activeElement === el) selectShown(el); else el.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const { pasted, error: pasteError } = usePasted(scenario, edited ? pasteText : "", target === "briefing");
   if (!scenario) return <NoMap entry={entry} title={t("Import Triggers")} icon={<Upload size={14} />} />;
 
   const accept = entry.payload?.format === "trg" ? ".trg" : entry.payload?.format === "txt" ? ".txt" : ".txt,.trg";
@@ -139,31 +201,102 @@ export function ImportTriggersDialog({ entry }: DialogProps) {
     toast({ kind: "ok", title: t("Triggers imported"), detail: text });
     close(entry.key);
   };
+  // Pasted text always replaces the whole list: what is in the box is the list wanted.
+  const applyPasted = () => {
+    if (!pasted) return;
+    const briefing = target === "briefing";
+    const before = replaceWithPasted(scenario, pasted, briefing);
+    commit();
+    const n = pasted.triggers.length;
+    const text = briefing
+      ? t("Replaced {before, plural, one {# briefing} other {# briefings}} with {n, plural, one {# pasted briefing} other {# pasted briefings}}", { before, n })
+      : t("Replaced {before, plural, one {# trigger} other {# triggers}} with {n, plural, one {# pasted trigger} other {# pasted triggers}}", { before, n });
+    setStatus(text);
+    toast({ kind: "ok", title: t("Triggers replaced"), detail: text });
+    close(entry.key);
+  };
+  const pasteFromClipboard = async () => {
+    setClipboardError(null);
+    try {
+      setPasteText(await navigator.clipboard.readText());
+    } catch {
+      setClipboardError(t("The browser did not hand over the clipboard. Click in the box and press Ctrl+V instead."));
+    }
+  };
   const count = target === "triggers" ? scenario.triggers.length : scenario.briefing.length;
+  const replacing = source === "paste" || replace;
 
   return (
-    <DialogFrame dialogKey={entry.key} title={t("Import Triggers")} icon={<Upload size={14} />} size="sm" footerLeft={<span className="hint">{t("{count} in the map now", { count })}</span>}
-      footer={<><Button variant="primary" disabled={!state?.triggers} onClick={apply}>{t("Import")}</Button><CloseButton entry={entry} /></>}
+    <DialogFrame dialogKey={entry.key} title={t("Import Triggers")} icon={<Upload size={14} />} size={source === "paste" ? "lg" : "sm"} footerLeft={<span className="hint">{t("{count} in the map now", { count })}</span>}
+      footer={source === "paste"
+        ? <><Button variant="primary" disabled={!pasted} onClick={applyPasted}>{t("Replace all")}</Button><CloseButton entry={entry} /></>
+        : <><Button variant="primary" disabled={!state?.triggers} onClick={apply}>{t("Import")}</Button><CloseButton entry={entry} /></>}
     >
-      <Group title={t("File")}>
-        <div className="row">
-          <Button size="sm" onClick={() => { void pick(); }} disabled={busy}><Upload size={12} /> {" "}{t("Choose file…")}</Button>
-          <span className={`hint ${state?.error ? "error-text" : ""}`} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-            {busy ? t("Reading…") : state ? state.error ? `${state.fileName}: ${state.error}` : t("{fileName}: {length, plural, one {# record} other {# records}}", { fileName: state.fileName, length: state.triggers!.length }) : t("A .txt in TrigEdit syntax or a .trg from SCMDraft ({accept}).", { accept })}
-          </span>
+      <Group title={t("From")}>
+        <div className="row" style={{ gap: 12 }}>
+          <Check radio name="import-source" label={t("A file")} checked={source === "file"} onChange={() => setSource("file")} />
+          <Check radio name="import-source" label={t("Pasted text")} checked={source === "paste"} onChange={() => setSource("paste")} />
         </div>
       </Group>
+      {source === "file" ? (
+        <Group title={t("File")}>
+          <div className="row">
+            <Button size="sm" onClick={() => { void pick(); }} disabled={busy}><Upload size={12} /> {" "}{t("Choose file…")}</Button>
+            <span className={`hint ${state?.error ? "error-text" : ""}`} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {busy ? t("Reading…") : state ? state.error ? `${state.fileName}: ${state.error}` : t("{fileName}: {length, plural, one {# record} other {# records}}", { fileName: state.fileName, length: state.triggers!.length }) : t("A .txt in TrigEdit syntax or a .trg from SCMDraft ({accept}).", { accept })}
+            </span>
+          </div>
+        </Group>
+      ) : (
+        <Group title={t("Text")}>
+          <TextArea
+            ref={box}
+            className="mono"
+            rows={18}
+            spellCheck={false}
+            wrap="off"
+            value={pasteText}
+            placeholder={t("Paste triggers here in TrigEdit syntax, as Export Triggers and the Text Trigger Editor write them: Trigger(\"Player 1\"){ … }")}
+            onChange={(e) => setPasteText(e.target.value)}
+            onFocus={(e) => selectShown(e.currentTarget)}
+            onKeyDown={(e) => e.stopPropagation()}
+            style={{ width: "100%", resize: "vertical" }}
+          />
+          <div className="row" style={{ marginTop: 6 }}>
+            <Button size="sm" onClick={() => { void pasteFromClipboard(); }}><ClipboardPaste size={12} /> {" "}{t("Paste from clipboard")}</Button>
+            {edited && current && <Button size="sm" variant="ghost" onClick={() => setPasteText(current)}>{t("Back to the map's triggers")}</Button>}
+            {pasteText && <Button size="sm" variant="ghost" onClick={() => setPasteText("")}>{t("Clear")}</Button>}
+            <span className={`hint ${pasteError || clipboardError ? "error-text" : ""}`} style={{ minWidth: 0 }}>
+              {clipboardError ?? pasteError ?? (pasted
+                ? (target === "briefing" ? t("{n, plural, one {# briefing} other {# briefings}} ready", { n: pasted.triggers.length }) : t("{n, plural, one {# trigger} other {# triggers}} ready", { n: pasted.triggers.length }))
+                : !edited && current
+                  ? (target === "briefing"
+                    ? t("The map's {count, plural, one {# briefing} other {# briefings}}, as text. Paste over it to replace them all.", { count })
+                    : t("The map's {count, plural, one {# trigger} other {# triggers}}, as text. Paste over it to replace them all.", { count }))
+                  : "")}
+            </span>
+          </div>
+        </Group>
+      )}
       <Group title={t("Into")}>
         <div className="form wide">
           <Field label={t("List")}><Select value={target} onChange={(e) => { setTarget(e.target.value as Target); setState(null); }} options={TARGETS} /></Field>
-          <Field label={t("Mode")}>
-            <div className="col" style={{ gap: 2 }}>
-              <Check radio name="import-mode" label={target === "briefing" ? t("Append after the existing briefings") : t("Append after the existing triggers")} checked={!replace} onChange={() => setReplace(false)} />
-              <Check radio name="import-mode" label={t("Replace the whole list")} checked={replace} onChange={() => setReplace(true)} />
-            </div>
-          </Field>
+          {source === "file" ? (
+            <Field label={t("Mode")}>
+              <div className="col" style={{ gap: 2 }}>
+                <Check radio name="import-mode" label={target === "briefing" ? t("Append after the existing briefings") : t("Append after the existing triggers")} checked={!replace} onChange={() => setReplace(false)} />
+                <Check radio name="import-mode" label={t("Replace the whole list")} checked={replace} onChange={() => setReplace(true)} />
+              </div>
+            </Field>
+          ) : (
+            <Field label={t("Mode")}>
+              <span className="hint">{target === "briefing"
+                ? t("Pasted briefings replace all {count, plural, one {# briefing} other {# briefings}} in the map (one undo step).", { count })
+                : t("Pasted triggers replace all {count, plural, one {# trigger} other {# triggers}} in the map (one undo step).", { count })}</span>
+            </Field>
+          )}
         </div>
-        {replace && target === "triggers" && locateClaims(claims, scenario.triggers).map((c) => <p key={c.claim.key} className="hint" style={{ marginTop: 6 }}>{t("Replacing removes the {count, plural, one {# trigger} other {# triggers}} generated by {label}; {pluginName} can build them again.", { count: c.count, label: pluginText(c.claim.pluginId, c.claim.spec.label), pluginName: c.claim.pluginName })}</p>)}
+        {replacing && target === "triggers" && locateClaims(claims, scenario.triggers).map((c) => <p key={c.claim.key} className="hint" style={{ marginTop: 6 }}>{t("Replacing removes the {count, plural, one {# trigger} other {# triggers}} generated by {label}; {pluginName} can build them again.", { count: c.count, label: pluginText(c.claim.pluginId, c.claim.spec.label), pluginName: c.claim.pluginName })}</p>)}
       </Group>
       <p className="hint">{t("Text names are resolved against this map's units, locations and switches; the first line that does not resolve is reported above. Strings in the text are added to the string table as needed.")}</p>
     </DialogFrame>
