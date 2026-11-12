@@ -639,7 +639,9 @@ npm run build:image                                       # build it locally, ta
 The image carries no game data: `.dockerignore` keeps the extracted trees out and
 `docker/nginx.conf` answers 404 for those paths, so a container asks through Help ▸ Game
 Data… like the hosted editor. Mounting an extracted tree is in
-[game-data.md](game-data.md#the-container-image).
+[game-data.md](game-data.md#the-container-image). Directives for one deployment, such as
+HTTPS on port 443, go in a `.conf` file in `/etc/nginx/server.d/`, which the editor's
+`server` block includes (`docker/server.d/README.md`).
 
 ### Cutting a release
 
