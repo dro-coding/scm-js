@@ -10,7 +10,54 @@
   gap: 6px;
   font-size: var(--fs-sm);
   color: var(--text);
+  position: relative;
 }
+
+/* A file dragged over the panel: the whole panel is the drop target. */
+.cla-root.cla-dropping { outline: 2px dashed var(--teal); outline-offset: -3px; border-radius: var(--radius); }
+.cla-drop-hint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--teal);
+  border-radius: var(--radius);
+  color: var(--text);
+  pointer-events: none;
+}
+
+/* Attachments: waiting in the composer, and sent with a message. */
+.cla-files, .cla-sent-files { display: flex; flex-wrap: wrap; gap: 4px; }
+.cla-sent-files { margin-top: 6px; white-space: normal; }
+.cla-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 5px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-xs);
+}
+.cla-file img { width: 20px; height: 20px; object-fit: cover; border-radius: 2px; }
+.cla-file-name { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cla-file-x {
+  display: inline-flex;
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.cla-file-x:hover { color: var(--text); }
+.cla-composer-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 
 .cla-bar {
   display: flex;

@@ -774,6 +774,17 @@ text, so it fits only a copy of the same map; text works between maps. From a te
 `scmjs map triggers export` and `import` do the same ([Triggers and strings as
 text](cli.md#triggers-and-strings-as-text)).
 
+To bring triggers in without a file, choose **Pasted text** in Import Triggers, or open
+**Triggers ▸ Paste Triggers…** (also File ▸ Import ▸ Pasted Triggers…). The box opens
+showing every trigger the map has now, as text in the Text Trigger Editor's syntax, and
+selected: press Ctrl+V and what you paste takes their place (**Paste from clipboard** does
+the same in one click). You can also edit the text in the box, and **Back to the map's
+triggers** shows the map's list again. The box is read as you go: it shows how many
+triggers it holds, or the first line it cannot read. **Replace all** then makes the box's
+triggers the map's whole list, and every trigger that was there goes. It is one step, so
+Edit ▸ Undo brings the old list back. Choose *Mission briefing* under *Into* to see and
+replace the briefing instead.
+
 **Triggers ▸ Validate Triggers** is [Check Map](#check-map) limited to the triggers.
 
 ## TrigScript
@@ -1872,6 +1883,26 @@ Everything the editor's own tools can, through the same commands:
 
 It cannot save the map: you save, as always. Without StarCraft's graphics it cannot see or
 paint terrain, and the picture it takes is a plain diagram of units and locations.
+
+### Attaching files
+
+Give Claude a file with your message: press **Attach**, drag files onto the panel, or
+paste a picture (a screenshot) into the message box. Each file waits above the box until
+you send, and × takes it off again.
+
+- **Pictures** (PNG, JPEG, GIF, WebP): a sketch of the layout you want, a screenshot of
+  another map, a reference. A picture larger than 1568 pixels on a side is scaled down
+  first; Claude sees no more detail than that.
+- **PDFs**, such as a design document or a campaign script.
+- **Text files**: notes, or triggers in the Text Trigger Editor's syntax. Ask Claude to
+  add them, or to replace the map's triggers with them.
+- **`.trg` files** are printed as trigger text against the open map before they go. A
+  `.trg` holds string numbers rather than text, so its messages are right only when it
+  came from a copy of this map; Claude is told so.
+
+Map files cannot be attached: open the map in the editor instead. Up to 10 files go with
+one message. Files stay in the conversation, so very large ones fill it up; when a file no
+longer fits, the panel says so, and a new conversation starts empty.
 
 ### Your key
 

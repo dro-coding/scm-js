@@ -15,8 +15,10 @@
 import { markDirty, strSectionName, type Scenario } from "../formats/chk/scenario";
 import { setString, type StringTable } from "../formats/chk/sections/strings";
 import { ConditionType, decodeTriggers, encodeTriggers, MAX_CONDITIONS, TRIGGER_STRIDE, type ReadonlyTrigger, type TriggerRecord } from "../formats/chk/sections/triggers";
-import { formatTriggers, parseTriggers } from "../formats/triggers/text";
-import { newCondition, triggerNames } from "./triggers";
+import { formatTriggers, parseTriggers, type TriggerNames } from "../formats/triggers/text";
+import {
+  applyBriefing, applyTriggers, draftTriggerNames, newCondition, newStringDrafts, resolveDraftStrings, triggerNames, type StringDrafts,
+} from "./triggers";
 import { t } from "../i18n";
 
 /* ── Triggers ────────────────────────────────────────────── */
@@ -37,9 +39,13 @@ export function triggersToText(scn: Scenario, triggers: TriggerRecord[], briefin
   return formatTriggers(triggers, triggerNames(scn), briefing);
 }
 
-/** Parse TrigEdit text against the map's names; throws `TriggerTextError` with the line. */
-export function triggersFromText(scn: Scenario, text: string, briefing = false): TriggerRecord[] {
-  const triggers = parseTriggers(text, triggerNames(scn), briefing).map((t) => t.trigger);
+/**
+ * Parse TrigEdit text against the map's names; throws `TriggerTextError` with the line.
+ * `names` defaults to the map's own, which interns the text's strings as it goes; a dialog
+ * that parses as the user types passes `draftTriggerNames` instead (`parsePastedTriggers`).
+ */
+export function triggersFromText(scn: Scenario, text: string, briefing = false, names: TriggerNames = triggerNames(scn)): TriggerRecord[] {
+  const triggers = parseTriggers(text, names, briefing).map((t) => t.trigger);
   // The game plays a briefing only when its first condition is Mission Briefing, which
   // StarEdit always writes and briefing text usually leaves out.
   if (briefing) {
@@ -62,6 +68,37 @@ export function triggerFormatOf(fileName: string): TriggerFileFormat {
 export function readTriggerFile(scn: Scenario, fileName: string, bytes: Uint8Array, briefing = false): TriggerRecord[] {
   if (triggerFormatOf(fileName) === "trg") return decodeTrg(bytes);
   return triggersFromText(scn, new TextDecoder("latin1").decode(bytes), briefing);
+}
+
+/** Pasted trigger text, parsed without touching the map: its new strings wait as drafts. */
+export interface PastedTriggers {
+  triggers: TriggerRecord[];
+  drafts: StringDrafts;
+}
+
+/**
+ * Parse text pasted into Import Triggers. The dialog parses at every change of the box, so
+ * the strings the text mentions are drafts until `replaceWithPasted` (through
+ * `triggerNames` each keystroke would have added a string to the map for good). Throws
+ * `TriggerTextError` with the line, and an error when the text holds no trigger.
+ */
+export function parsePastedTriggers(scn: Scenario, text: string, briefing = false): PastedTriggers {
+  const drafts = newStringDrafts();
+  const triggers = triggersFromText(scn, text, briefing, draftTriggerNames(scn, triggerNames(scn), drafts));
+  if (triggers.length === 0) throw new Error(t("The text holds no Trigger(…) block."));
+  return { triggers, drafts };
+}
+
+/**
+ * The pasted triggers as the map's whole list (TRIG, or MBRF for a briefing): every
+ * existing one goes. Interns the drafts the list uses; the caller commits, which makes it
+ * one undo step. Returns how many the list held before.
+ */
+export function replaceWithPasted(scn: Scenario, pasted: PastedTriggers, briefing = false): number {
+  const before = briefing ? scn.briefing.length : scn.triggers.length;
+  const list = resolveDraftStrings(scn, pasted.triggers, pasted.drafts);
+  if (briefing) applyBriefing(scn, list); else applyTriggers(scn, list);
+  return before;
 }
 
 /* ── Strings ─────────────────────────────────────────────── */

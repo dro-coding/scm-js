@@ -3,9 +3,10 @@
  * the composer, the model and effort pickers, settings, and what the chat has cost.
  */
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import { AlertTriangle, Ban, Check, ChevronDown, ChevronRight, Eye, Pencil, RotateCcw, Send, Settings, Square, Undo2, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, ChevronDown, ChevronRight, Eye, FileText, Paperclip, Pencil, RotateCcw, Send, Settings, Square, Undo2, X } from "lucide-react";
+import { MAX_FILES, type Attachment, type AttachmentKind } from "../attachments";
 import type { AgentController } from "../controller";
-import type { AgentSession, TranscriptItem } from "../session";
+import type { AgentSession, SentFile, TranscriptItem } from "../session";
 import { EFFORTS, MODELS, type AgentSettings, type ApprovalMode, type Effort, type Placement } from "../settings";
 import { Markdown } from "./Markdown";
 
@@ -31,9 +32,33 @@ export function AgentPanel({ controller }: { controller: AgentController }) {
   const settings = controller.settings.get();
   const ready = controller.settings.ready();
   const [showSettings, setShowSettings] = useState(!ready);
+  const attach = useAttachments(session);
+  const [dragging, setDragging] = useState(false);
+  const dragTimer = useRef<number | null>(null);
+
+  // A file dropped on the panel is an attachment. The editor opens a map dropped anywhere
+  // in the window (App.tsx); cancelling here, and stopping the event, keeps it from doing
+  // that with a file meant for Claude.
+  const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files");
+  const onDragOver = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    setDragging(true);
+    if (dragTimer.current !== null) window.clearTimeout(dragTimer.current);
+    dragTimer.current = window.setTimeout(() => { dragTimer.current = null; setDragging(false); }, 400);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    void attach.add([...e.dataTransfer.files]);
+  };
 
   return (
-    <div className="cla-root">
+    <div className={`cla-root${dragging ? " cla-dropping" : ""}`} onDragOver={onDragOver} onDrop={onDrop}>
       <div className="cla-bar">
         <select className="select cla-model" value={settings.model} title="Model" onChange={(e) => controller.settings.set({ model: e.target.value })}>
           {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -56,8 +81,87 @@ export function AgentPanel({ controller }: { controller: AgentController }) {
         />
       )}
       <Transcript session={session} onSuggestion={(s) => void session.send(s)} ready={ready} onSettings={() => setShowSettings(true)} />
-      <Composer session={session} ready={ready} />
+      <Composer session={session} ready={ready} attach={attach} />
       <Footer session={session} />
+      {dragging && <div className="cla-drop-hint"><Paperclip size={16} /> Drop to attach: pictures, PDFs, text, .trg</div>}
+    </div>
+  );
+}
+
+/* ── Attachments ────────────────────────────────────────── */
+
+interface Attach {
+  files: Attachment[];
+  errors: string[];
+  reading: number;
+  add(list: File[]): Promise<void>;
+  remove(index: number): void;
+  clear(): void;
+}
+
+/** The files waiting to go with the next message, and why any were turned away. */
+function useAttachments(session: AgentSession): Attach {
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [reading, setReading] = useState(0);
+  const current = useRef<Attachment[]>([]);
+  current.current = files;
+  // Another map's conversation: what was waiting belonged to this one.
+  useEffect(() => { setFiles([]); setErrors([]); }, [session]);
+
+  const add = async (list: File[]) => {
+    if (list.length === 0) return;
+    setErrors([]);
+    setReading((n) => n + list.length);
+    const ok: Attachment[] = [];
+    const bad: string[] = [];
+    for (const file of list) {
+      try {
+        ok.push(await session.readFile(file));
+      } catch (err) {
+        bad.push(err instanceof Error ? err.message : String(err));
+      } finally {
+        setReading((n) => n - 1);
+      }
+    }
+    const room = Math.max(0, MAX_FILES - current.current.length);
+    if (ok.length > room) bad.push(`Up to ${MAX_FILES} files go with one message; ${ok.length - room} left out.`);
+    const next = [...current.current, ...ok.slice(0, room)];
+    current.current = next;
+    setFiles(next);
+    setErrors(bad);
+  };
+  return {
+    files, errors, reading, add,
+    remove: (index) => setFiles((cur) => cur.filter((_, n) => n !== index)),
+    clear: () => { setFiles([]); setErrors([]); },
+  };
+}
+
+const sizeText = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
+
+function FileChip({ name, kind, size, preview, onRemove }: { name: string; kind: AttachmentKind; size: number; preview?: string; onRemove?: () => void }) {
+  return (
+    <span className="cla-file" title={`${name} — ${sizeText(size)}`}>
+      {preview ? <img src={preview} alt="" /> : <FileText size={13} />}
+      <span className="cla-file-name">{name}</span>
+      <span className="cla-dim">{kind === "pdf" ? "PDF" : kind === "image" ? sizeText(size) : "text"}</span>
+      {onRemove && <button type="button" className="cla-file-x" title="Remove" onClick={onRemove}><X size={11} /></button>}
+    </span>
+  );
+}
+
+function SentFiles({ files }: { files: SentFile[] }) {
+  const [big, setBig] = useState<string | null>(null);
+  const pictures = files.filter((f) => f.preview);
+  return (
+    <div className="cla-sent-files">
+      {pictures.length > 0 && (
+        <div className="cla-images">
+          {pictures.map((f) => <img key={f.name + f.size} src={f.preview} alt={f.name} title={f.name} className={big === f.preview ? "big" : ""} onClick={() => setBig(big === f.preview ? null : f.preview!)} />)}
+        </div>
+      )}
+      {files.filter((f) => !f.preview).map((f) => <FileChip key={f.name + f.size} name={f.name} kind={f.kind} size={f.size} />)}
     </div>
   );
 }
@@ -142,7 +246,12 @@ function Transcript({ session, onSuggestion, ready, onSettings }: { session: Age
 
 function Item({ item, session, onSettings }: { item: TranscriptItem; session: AgentSession; onSettings: () => void }) {
   switch (item.kind) {
-    case "user": return <div className="cla-user">{item.text}</div>;
+    case "user": return (
+      <div className="cla-user">
+        {item.text}
+        {item.files?.length ? <SentFiles files={item.files} /> : null}
+      </div>
+    );
     case "text": return item.text.trim() ? <div className="cla-text"><Markdown text={item.text} /></div> : null;
     case "thinking": return <Thinking text={item.text} done={item.done} />;
     case "tool": return <ToolRow item={item} session={session} />;
@@ -223,14 +332,17 @@ function ToolRow({ item, session }: { item: Extract<TranscriptItem, { kind: "too
 
 /* ── Composer and footer ────────────────────────────────── */
 
-function Composer({ session, ready }: { session: AgentSession; ready: boolean }) {
+function Composer({ session, ready, attach }: { session: AgentSession; ready: boolean; attach: Attach }) {
   const [text, setText] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const canSend = ready && !session.busy && attach.reading === 0 && (text.trim() !== "" || attach.files.length > 0);
   const send = () => {
-    const t = text.trim();
-    if (!t || session.busy || !ready) return;
+    if (!canSend) return;
+    const files = attach.files;
     setText("");
-    void session.send(t);
+    attach.clear();
+    void session.send(text.trim(), files);
   };
   useLayoutEffect(() => {
     const el = area.current;
@@ -240,10 +352,19 @@ function Composer({ session, ready }: { session: AgentSession; ready: boolean })
   }, [text]);
   return (
     <div className="cla-composer">
+      {(attach.files.length > 0 || attach.reading > 0) && (
+        <div className="cla-files">
+          {attach.files.map((f, n) => (
+            <FileChip key={`${n}-${f.name}`} name={f.name} kind={f.kind} size={f.size} preview={f.kind === "image" ? `data:${f.mediaType};base64,${f.data}` : undefined} onRemove={() => attach.remove(n)} />
+          ))}
+          {attach.reading > 0 && <span className="cla-file"><span className="spinner sm" /> Reading…</span>}
+        </div>
+      )}
+      {attach.errors.map((err) => <div key={err} className="cla-notice warn"><AlertTriangle size={13} /><span>{err}</span></div>)}
       <textarea
         ref={area}
         className="textarea"
-        placeholder={ready ? "Ask Claude to change the map…" : "Add your API key in settings first"}
+        placeholder={ready ? "Ask Claude to change the map… (drop or paste files to attach)" : "Add your API key in settings first"}
         disabled={!ready}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -251,10 +372,34 @@ function Composer({ session, ready }: { session: AgentSession; ready: boolean })
           e.stopPropagation();
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
         }}
+        onPaste={(e) => {
+          // A pasted picture (a screenshot) is an attachment; pasted text stays text.
+          const files = [...e.clipboardData.files];
+          if (files.length === 0) return;
+          e.stopPropagation();
+          if (!e.clipboardData.types.includes("text/plain")) e.preventDefault();
+          void attach.add(files);
+        }}
       />
-      {session.busy
-        ? <button type="button" className="btn sm danger" title="Stop" onClick={() => session.stop()}><Square size={12} /> Stop</button>
-        : <button type="button" className="btn sm primary" title="Send (Enter)" disabled={!ready || !text.trim()} onClick={send}><Send size={12} /> Send</button>}
+      <div className="cla-composer-row">
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            e.target.value = "";
+            void attach.add(files);
+          }}
+        />
+        <button type="button" className="btn sm ghost" title="Attach files: pictures, PDFs, text, .trg" disabled={!ready || session.busy} onClick={() => picker.current?.click()}>
+          <Paperclip size={12} /> Attach
+        </button>
+        {session.busy
+          ? <button type="button" className="btn sm danger" title="Stop" onClick={() => session.stop()}><Square size={12} /> Stop</button>
+          : <button type="button" className="btn sm primary" title="Send (Enter)" disabled={!canSend} onClick={send}><Send size={12} /> Send</button>}
+      </div>
     </div>
   );
 }

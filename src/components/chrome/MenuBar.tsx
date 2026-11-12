@@ -342,6 +342,7 @@ function useMenus(): Menu[] {
           items: [
             dlgWith(msg("Triggers (.trg)…"), "importTriggers", { format: "trg" }, undefined, viewOnly),
             dlgWith(msg("Text Triggers (.txt)…"), "importTriggers", { format: "txt" }, undefined, viewOnly),
+            dlgWith(msg("Pasted Triggers…"), "importTriggers", { source: "paste" }, undefined, viewOnly),
             edits(msg("Strings (.txt)…"), "importStrings"),
           ],
         },
@@ -459,6 +460,7 @@ function useMenus(): Menu[] {
         edits(msg("Unit Properties Slots…"), "cuwpEditor"),
         sep,
         edits(msg("Import Triggers…"), "importTriggers"),
+        dlgWith(msg("Paste Triggers…"), "importTriggers", { source: "paste" }, undefined, viewOnly),
         dlg(msg("Export Triggers…"), "exportTriggers"),
         sep,
         dlgWith(msg("Validate Triggers"), "validateMap", { only: "triggers" }),
