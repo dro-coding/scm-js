@@ -1312,8 +1312,11 @@ describe("plugin lifecycle", () => {
     // build runs) or fetches them, every default is in the list exactly once and under
     // the same identity — that is what stops a bundled copy appearing beside its remote.
     expect(defaultPlugins().filter((d) => !isForkBuiltin(d.spec)).map((d) => pluginKey(d.spec))).toEqual(DEFAULT_REMOTE_PLUGINS.map((d) => pluginKey(d.spec)));
-    // This fork's own built-in follows the remote defaults and starts on.
-    expect(defaultPlugins().filter((d) => isForkBuiltin(d.spec))).toEqual([{ spec: "builtin:claude-agent", enabled: true }]);
+    // This fork's own built-ins follow the remote defaults and start on.
+    expect(defaultPlugins().filter((d) => isForkBuiltin(d.spec))).toEqual([
+      { spec: "builtin:claude-agent", enabled: true },
+      { spec: "builtin:euddraft", enabled: true },
+    ]);
     expect(defaultPluginSpecs()).toEqual(defaultPlugins().map((d) => d.spec));
     // A fresh editor runs all five, Walkability and Paint with the rest.
     const fresh = effectiveInstalls([]).map((p) => pluginKey(p.spec));

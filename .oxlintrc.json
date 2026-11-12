@@ -10,7 +10,7 @@
     "react/set-state-in-effect": "off",
     "react/preserve-manual-memoization": "off"
   },
-  "ignorePatterns": [".claude/worktrees/**"],
+  "ignorePatterns": [".claude/worktrees/**", "src/euddraft/runtime/**"],
   "overrides": [
     {
       "files": ["e2e/**"],
