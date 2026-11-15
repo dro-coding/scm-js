@@ -1260,11 +1260,13 @@ describe("plugin lifecycle", () => {
     expect(store.get(installedPluginsAtom)).toEqual([{ spec: "github:d/p", enabled: false }]);
   });
 
-  it("ships eleven defaults in order, TrigEdit starting off, each pinned to a version", () => {
-    // Which eleven, in alphabetical order of their names (what Manage Plugins shows), and
+  it("ships twelve defaults in order, TrigEdit starting off, each pinned to a version", () => {
+    // Which twelve, in alphabetical order of their names (what Manage Plugins shows), and
     // which of them start on — the versions deliberately not, since every plugin release would otherwise have to come back and edit this.
+    // This fork adds one of its own, Claude Agent, from its own repository.
     expect(DEFAULT_REMOTE_PLUGINS.map((d) => pluginIdentity(d.spec))).toEqual([
       "github:scm-js/plugin-aftermath",
+      "github:dro-coding/plugin-claude-agent",
       "github:scm-js/plugin-paint",
       "github:scm-js/plugin-repair",
       "github:scm-js/plugin-scm-sim",
@@ -1282,6 +1284,7 @@ describe("plugin lifecycle", () => {
     // scmjs.dev starts on: it sends nothing until it is used or somebody is signed in.
     expect(DEFAULT_REMOTE_PLUGINS.map((d) => [pluginIdentity(d.spec), d.enabled])).toEqual([
       ["github:scm-js/plugin-aftermath", true],
+      ["github:dro-coding/plugin-claude-agent", true],
       ["github:scm-js/plugin-paint", true],
       ["github:scm-js/plugin-repair", true],
       ["github:scm-js/plugin-scm-sim", true],
@@ -1312,11 +1315,12 @@ describe("plugin lifecycle", () => {
     // build runs) or fetches them, every default is in the list exactly once and under
     // the same identity — that is what stops a bundled copy appearing beside its remote.
     expect(defaultPlugins().filter((d) => !isForkBuiltin(d.spec)).map((d) => pluginKey(d.spec))).toEqual(DEFAULT_REMOTE_PLUGINS.map((d) => pluginKey(d.spec)));
-    // This fork's own built-ins follow the remote defaults and start on.
+    // This fork's own built-in follows the remote defaults and starts on. (Its Claude Agent
+    // is a remote default, github:dro-coding/plugin-claude-agent, and in the list above.)
     expect(defaultPlugins().filter((d) => isForkBuiltin(d.spec))).toEqual([
-      { spec: "builtin:claude-agent", enabled: true },
       { spec: "builtin:euddraft", enabled: true },
     ]);
+    expect(DEFAULT_REMOTE_PLUGINS.some((d) => d.spec.startsWith("github:dro-coding/plugin-claude-agent@v") && d.enabled)).toBe(true);
     expect(defaultPluginSpecs()).toEqual(defaultPlugins().map((d) => d.spec));
     // A fresh editor runs all five, Walkability and Paint with the rest.
     const fresh = effectiveInstalls([]).map((p) => pluginKey(p.spec));
@@ -2036,7 +2040,7 @@ describe("plugin previews", () => {
     // A plugin that follows a branch has no update to check for — Reload is its update.
     expect(updateAddress("github:o/p")).toBeNull();
     // A fork's own built-in has no repository, so nothing to check.
-    expect(updateAddress("builtin:claude-agent")).toBeNull();
+    expect(updateAddress("builtin:euddraft")).toBeNull();
     expect(updateAddress("github:o/p@main")).toBeNull();
     expect(updateAddress("https://example.com/p/plugin.json")).toBeNull();
     expect(updateAddress("builtin:not-vendored-here")).toBeNull();

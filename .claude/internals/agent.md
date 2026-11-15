@@ -1,95 +1,58 @@
-# Claude Agent (`src/agent/`) — this fork's built-in plugin
+# Claude Agent — a plugin of its own, a default of this fork
 
-A panel where Claude reads and edits the open map. Built 2026-11-11 on `dro-coding/scm-js`
-branch `feat/claude-agent`. Reader docs: `docs/guide.md#claude-agent`, README feature list.
+A panel where Claude reads and edits the open map. Built 2026-11-11 in this fork's
+`src/agent`; moved 2026-11-15 into its own repository,
+**github.com/dro-coding/plugin-claude-agent**, after scm-js/scm-js#228's review asked for a
+plugin instead of editor code. Reader docs: `docs/guide.md#claude-agent`, README feature
+list, and the plugin's own README.
 
-## Shape
+## How it gets here
 
-- **A plugin, not editor code.** `src/agent/plugin.ts` is an ordinary `activate(api)`; every
-  read and write goes through the plugin API (`api.document.edit` / `update`, `api.query`,
-  `api.triggers`, `api.settings`, …), so an agent edit undoes, dirties, repaints and reaches
-  a shared map exactly like a hand edit, and nothing in the editor knows the agent exists.
-  It lives in `src/agent` (tracked, type-checked by `tsconfig.app.json`) instead of the
-  generated, gitignored `plugins/` folder, which `vendor-plugins.mjs --clean` empties.
-  `src/plugins/builtin.ts` registers it as `builtin:claude-agent` after the globbed
-  built-ins; `defaults.ts#isForkBuiltin` tells it apart from a vendored default (no
-  repository, so no update address), and the plugin tests compare only the remote
-  defaults with `DEFAULT_REMOTE_PLUGINS`.
-- **Startup cost: `plugin.ts` only** (1.6 KB): a status-bar cell, Tools ▸ Claude Agent,
-  Ctrl+Alt+C (Ctrl+Shift+K is the stamp library's; Ctrl+Shift+J/A are browser keys). The
-  controller, tools, `@anthropic-ai/sdk` and the React UI are one lazy chunk (453 KB, 109 KB
-  gzip) loaded on first open; `docs/triggers.md` and `docs/guide.md` are two more
-  (`?raw`, 23 + 43 KB gzip), loaded the first time `read_docs` runs.
-- **Controller** (`controller.ts`) outlives the panel: settings (`settings.ts`, plugin
-  storage; the key is stored only with *Remember*) and one `AgentSession` per document id,
-  dropped when that map closes. Closing the panel mid-turn does not stop the turn.
-- **Session** (`session.ts`): the Messages API's manual tool loop, streamed with
-  `client.beta.messages.stream` from the browser (`dangerouslyAllowBrowser`). Tools run in
-  order (they mutate the map); all of one round's results go back in one user message.
-  The history is **append-only** (prompt cache + preserved thinking); per-moment context
-  goes in each user message as a `<map_state>` block (`tools/map.ts#mapState`), never in
-  the system prompt (`prompt.ts`, frozen text). Request: `claude-opus-5-5` by default,
-  `max_tokens` 64000, adaptive thinking (`display: summarized` when shown), `output_config.
-  effort`, top-level `cache_control`, and for Opus / Sonnet the server-side refusal
-  fallback (`server-side-fallback-2026-07-01`, `fallbacks: "default"`; Haiku has none).
-  Stop aborts the stream; tool calls not yet run get `is_error` results so the history
-  stays valid. A user-run "Undo these changes" sets a note sent with the next message.
-- **Tools** (`tools/*.ts`, 55, registry order fixed in `tools/index.ts` — it is part of the
-  cached prefix). Each has a JSON schema (`schema.ts` subset), an effect (`read` / `write` /
-  `destructive`, which the approval setting gates), a `describe` line for the transcript
-  and `run`. Inputs are sent with `eager_input_streaming`, so the server no longer validates
-  them: `schema.ts#validate` does, before every run, and a failure is an error result.
-- **Attachments** (`attachments.ts`, read by `session.readFile`): pictures as image blocks
-  (scaled to 1568 px in the browser, `scaleInBrowser`), PDFs as base64 documents, text as
-  plain-text documents titled with the file name (UTF-8, else Latin-1 as Import Triggers
-  reads), a `.trg` printed through `api.triggers.text.print` with a `context` note that its
-  strings are this map's. Map files and binary files are refused with the reason. They sit
-  between the `<map_state>` block and the words of that one user message, and since the
-  history is append-only they ride along on every later request: `MAX_CONVERSATION_BYTES`
-  (24 MB as sent) caps a conversation under the 32 MB request limit. The panel takes them
-  from Attach, a drop anywhere on it (cancelled and stopped there, or `App.tsx` would open a
-  dropped map file), and a pasted picture.
+- `src/plugins/defaults.ts` pins it like scm-js's defaults:
+  `github:dro-coding/plugin-claude-agent@vX.Y.Z`, on. `scripts/vendor-plugins.mjs` copies
+  its source into `plugins/claude-agent/` (the name the old `builtin:claude-agent` had, so
+  plugin storage, which holds the settings and a remembered key, carries over), and Vite
+  compiles it in: the controller, tools, SDK and React panel stay lazy chunks loaded on
+  first open, the copied docs another one loaded by the first `read_docs`.
+- It imports values from `@anthropic-ai/sdk`, `react`, `react-dom` and `lucide-react`;
+  vendored source resolves them from this repository's `node_modules`, which is why the
+  SDK stays in `package.json` here. Its standalone bundle (`dist/plugin.js`, 2.2 MB
+  unminified) carries them itself for any other editor.
+- Not type-checked here (`tsconfig.app.json` includes `src` only), so the SDK's
+  `undici-types` stub lives in the plugin's own tsconfig, not this one.
+- To move it forward: tag a release in the plugin repository, bump the tag in
+  `defaults.ts`, `npm run vendor:plugins`, run `tests/claude-agent-plugin.test.ts`.
 
-## Conventions the tools speak (and the prompt states)
+## What changed in the move (and why)
 
-Players 1–12 and forces 1–4 (converted to 0-based owners); locations by **number** 1–255 as
-the trigger text counts them (64 Anywhere); record indices 0-based. Positions in map pixels
-(unit centre), or `tx`/`ty` meaning a tile's centre; rects `{x0,y0,x1,y1}` exclusive.
-Every write is labelled `Claude: …` (`types.ts#LABEL_PREFIX`); `undo_my_edits` and the
-turn's undo button stop at the first entry that is not.
-
-## Traps found
-
-- **The trigger parser interns as it goes.** `tx.triggers.fromText` on text with an error
-  on line 5 has already interned line 2's strings; `withStrings` never records them (the
-  parse threw), so no undo entry exists and the table keeps them until reload.
-  `tools/triggers.ts#checkText` parses first with a copy of `api.triggers.names()` whose
-  `intern` returns 1 — the error, with its line, before anything is touched. `runUpdate`
-  also undoes a partial entry when an update throws after recording one.
-- **The SDK's typings import `undici-types` / `undici`, which pull in `@types/node`** —
-  Node globals in the browser build (`setTimeout` became `NodeJS.Timeout` and broke
-  `SplashScreen.tsx`). `tsconfig.app.json` `paths` maps both names to
-  `src/agent/undici-types-stub.d.ts`; the SDK's `NotAny<…>` probes then fall back to the DOM
-  types. Do not "fix" the splash screen instead.
-- **The right dock has little spare height** under Minimap / Layers / Properties / Under
-  Cursor (≈160 px at 1440 × 900), too little for a conversation, so the default placement
-  is a resizable, maximizable floating panel; *Where the panel sits* offers the right dock
-  and the bottom strip (`plugin.ts#where`, re-opened through `controller.reopen`). The
-  panel never opens by itself: on a first visit it would cover the map (and e2e clicks).
-- `erasableSyntaxOnly`: no constructor parameter properties.
-- Without game data `palette.unitSize` is a fallback size, so `place_units` blocks are
-  spaced wider; a tile-sized `area` filter can fall between rows (seen in the browser run).
+- **Plugin API only.** Trigger text goes through `tx.triggers.fromText` inside
+  `document.update`. Before scm-js/scm-js#259 (this fork's editor, 0.13.3) a failed parse
+  has already interned the text's strings and `withStrings` never records them (the parse
+  threw), so they would stay with no undo step: `tools/triggers.ts#writeText` lists
+  `tx.strings` first and `apply`s it back before rethrowing; `runUpdate` then takes back
+  the step that records. On an editor with #259 the table is untouched and that does
+  nothing. `.trg` attachments use `api.exchange.decodeTrg`; the docs are copied in at a
+  release tag (`npm run docs` there); the stylesheet is a string the panel injects.
+- **Wrong map (review bug 1).** Tools act on the map in front. A session remembers its
+  map (`docId`); the controller passes every `"document"` event to every session, and one
+  whose map leaves the front mid-turn stops (`documentChanged`); every tool call, approved
+  ones included, checks the map before it runs. `new_map` (`opensMap`) moves the
+  conversation to the map it made instead (`controller.moved`).
+- **Wrong undo (review bug 2).** A turn records its map's undo stack around each of its
+  calls (`markStack`): `edits` is the depth it added, whatever the steps' labels (resize,
+  tileset, new map counted right), and "Undo these changes" works only while depth and top
+  label are exactly as the turn left them (`canUndoTurn`, re-checked on every `"commit"`
+  event). A turn with someone else's step between two of its own offers no button.
+- Also from the review: the prompt says map text, tool results and attachments are content,
+  not instructions; prices checked against Anthropic's page (Sonnet 5.5 cache reads $0.10,
+  Haiku 5.5's over-100k-token tier added, a fallback priced as the model that answered);
+  every shown string through `api.i18n` with a full `ko.ts`.
 
 ## Verification
 
-`tests/agent.test.ts` (13): the registry (unique names, closed schemas, eager streaming),
-validation, effects, and the tools against a blank map through `createPluginApi` — units
-with properties / update / move / delete, locations and which triggers use them, trigger
-add / insert / replace / delete, a failed parse leaving the map, the strings and the undo
-stack untouched, undo stopping at the user's edit, properties / players / forces / unit
-settings, lookup, docs, and the no-graphics refusal. In the browser (2026-11-11, built
-`dist/` under `vite preview`): a local stand-in for the Messages API streaming a scripted
-turn (thinking, text, overview → place + location → picture → a destructive delete) drove
-the real panel: streaming rows, the schematic picture, the approval card, the turn's
-undo, the placement switch; the requests carried the shape above with no key (address
-mode).
+In the plugin repository (no editor): the tool set, attachments, prices, the Korean
+catalogue, the old-editor string leak, and the conversation loop against a scripted Messages
+API and a stand-in editor with an undo stack per map (both bugs; each test fails with its
+fix taken out). Here, `tests/claude-agent-plugin.test.ts` runs the vendored tools against a
+blank map through `createPluginApi`, including "a failed parse leaves the strings and the
+undo stack as they were" on this pre-#259 editor.

@@ -56,7 +56,9 @@ Plugins ▸ Browse Plugins….
   Claude edits the open map with you: terrain, units, locations, doodads, sprites, fog,
   triggers, the briefing, players, forces, unit / upgrade / technology settings and
   strings. Each change is one undo step. It runs on your own Anthropic key, straight from
-  the browser, with no account. See [Claude Agent](docs/guide.md#claude-agent).
+  the browser, with no account. A plugin of its own,
+  [dro-coding/plugin-claude-agent](https://github.com/dro-coding/plugin-claude-agent),
+  which this fork starts with. See [Claude Agent](docs/guide.md#claude-agent).
 - **Triggers as a graph.** Trigger Map (*Browse Plugins*) shows which triggers set and
   read each switch, death counter and location, and what is never set, read or run.
 - **Walkability.** View ▸ Walkability (Ctrl+Shift+W) draws islands, regions, chokes with

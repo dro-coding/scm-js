@@ -51,7 +51,7 @@ reach, and the traps in them are not visible from the code.
 | `cli/**`, `scripts/build-cli.mjs`, `useOpenerHandoff` — the `scmjs` command | `cli.md` |
 | `core/**`, `scripts/build-core.mjs`, `src/editor/mapFile.ts` — the `@scm-js/core` package; adding an export, what may not reach the UI | `core.md` |
 | `src/formats/mod/**`, `cli/src/mod/**`, the `mod_*` MCP tools — the mod folder, `scmjs mod` | `mods.md` |
-| `src/agent/**` — this fork's Claude Agent panel (built-in plugin, tools, the Messages API loop) | `agent.md` |
+| Claude Agent — a plugin of its own (github.com/dro-coding/plugin-claude-agent), a pinned default here, vendored into `plugins/claude-agent` | `agent.md` |
 
 ## Commands
 
