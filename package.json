@@ -71,6 +71,7 @@
     "marked": "^18.0.11",
     "oxlint": "^1.79.0",
     "picocolors": "^1.1.1",
+    "pyodide": "314.0.7",
     "vite": "^8.2.2",
     "vitest": "^4.1.11",
     "vscode-languageserver": "^11.0.0",

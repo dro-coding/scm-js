@@ -1,0 +1,63 @@
+/* The euddraft panel (src/euddraft). Built on the editor's tokens and its shared .btn /
+   .select / .check / .spinner classes; everything here is prefixed edd-. */
+
+.edd-root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.edd-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.edd-grow { flex: 1; min-width: 0; }
+.edd-dim { color: var(--text-dim); }
+.edd-small { font-size: var(--fs-xs); }
+.edd-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+.edd-ok { color: var(--ok); }
+.edd-bad { color: var(--danger); }
+.edd-intro p { margin: 0 0 6px; line-height: 1.45; }
+.edd-note { margin: 0; color: var(--text-dim); line-height: 1.4; }
+.edd-note.edd-warn { color: var(--warn); }
+.edd-note svg { vertical-align: -2px; }
+
+.edd-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 160px;
+  overflow: auto;
+}
+.edd-section { display: flex; align-items: baseline; gap: 8px; }
+.edd-section-name { font-family: var(--font-mono); white-space: nowrap; }
+.edd-section.edd-bad .edd-dim { color: var(--danger); }
+
+.edd-actions { padding-top: 2px; }
+.edd-actions .btn svg { margin-right: 2px; }
+
+.edd-log {
+  flex: 1;
+  min-height: 120px;
+  overflow: auto;
+  padding: 6px 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.edd-log-bad { color: var(--danger); }
+.edd-log-warn { color: var(--warn); }
+.edd-log-head { margin-top: 6px; font-weight: 600; }
+.edd-log-detail { margin-top: 4px; color: var(--text-dim); }
+.edd-log-detail summary { cursor: pointer; user-select: none; }
+.edd-log-detail pre { margin: 2px 0 0; white-space: pre-wrap; font: inherit; }

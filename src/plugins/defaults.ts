@@ -115,8 +115,8 @@ export const defaultPlugins = (): DefaultPlugin[] => {
 
 /**
  * A plugin a fork compiled into the bundle that stands for no remote default (this fork's
- * `builtin:claude-agent`): it has no repository, so no version to check for and nothing to
- * vendor. The remote defaults are `defaultPlugins()` without these.
+ * `builtin:claude-agent` and `builtin:euddraft`): it has no repository, so no version to
+ * check for and nothing to vendor. The remote defaults are `defaultPlugins()` without these.
  */
 export function isForkBuiltin(spec: string): boolean {
   const builtin = /^builtin:([\w-]+)$/i.exec(spec.trim());

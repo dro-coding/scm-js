@@ -120,7 +120,35 @@ export function buildNotices(root) {
     parts.push(rule(`plugin ${plugin.name} (${plugin.spec}, compiled in)`), readFileSync(file, "utf8").trim(), "");
   }
 
+  parts.push(...euddraftNotices(root));
+
   return parts.join("\n");
+}
+
+/**
+ * The euddraft compiler (`src/euddraft/`, this fork's): euddraft's own files, and the
+ * runtime it builds with — eudplib's wheel, the epScript compiler built with Emscripten,
+ * Pyodide and typing_extensions — which the build serves from `plugin-runtime/euddraft/`.
+ * Their texts are kept in `src/euddraft/runtime/licenses/`; none may be missing.
+ */
+export function euddraftNotices(root) {
+  const licenses = join(root, "src", "euddraft", "runtime", "licenses");
+  const euddraft = join(root, "src", "euddraft", "vendor", "euddraft", "LICENSE.txt");
+  if (!existsSync(licenses)) return [];
+  const titles = {
+    "eudplib-LICENSE.txt": "eudplib 0.81.0 (the wheel, and the epScript compiler built from its source)",
+    "emscripten-LICENSE.txt": "Emscripten 5.0.3 (the generated loader of the epScript compiler)",
+    "pyodide-LICENSE.txt": "Pyodide 314.0.7 (CPython for WebAssembly; source: https://github.com/pyodide/pyodide)",
+    "typing_extensions-LICENSE.txt": "typing_extensions 4.15.0",
+    "plugin-eudplib-LICENSE.txt": "scm-js/plugin-eudplib 0.6.0 (the archive shim and the eudplib wheel build)",
+  };
+  const parts = [rule("euddraft (Tools ▸ euddraft…): euddraft v0.11.0.1"), readFileSync(euddraft, "utf8").trim(), ""];
+  for (const [file, title] of Object.entries(titles)) {
+    const path = join(licenses, file);
+    if (!existsSync(path)) throw new Error(`notices: src/euddraft/runtime/licenses/${file} is missing`);
+    parts.push(rule(`euddraft runtime: ${title}`), readFileSync(path, "utf8").trim(), "");
+  }
+  return parts;
 }
 
 /** The line that starts the runtimes' part of the file, so a second run replaces it. */

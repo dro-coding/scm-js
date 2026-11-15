@@ -1,0 +1,11 @@
+{
+  "name": "euddraft",
+  "id": "euddraft",
+  "version": "0.1.0",
+  "description": "Build the open map with euddraft, from your project folder: its .eds or .edd settings, your .eps and .py plugins and euddraft's bundled ones (MSQC, chatEvent, eudTurbo…). eudplib 0.81 and euddraft 0.11 run in this browser tab (Python as WebAssembly); nothing is uploaded. Freeze protection is not applied yet.",
+  "author": "dro-coding",
+  "homepage": "https://github.com/dro-coding/scm-js",
+  "entry": "plugin.ts",
+  "icon": "icon.svg",
+  "api": 1
+}

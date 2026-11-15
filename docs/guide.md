@@ -1938,6 +1938,48 @@ The bottom of the panel shows how full the conversation is and roughly what it h
 Anthropic's list prices. The circular arrow starts a new conversation. Each open map keeps
 a conversation of its own while the editor is open.
 
+## euddraft
+
+This copy of the editor can also build the open map with
+[euddraft](https://github.com/armoha/euddraft), the tool StarCraft: Remastered EUD maps
+are made with. An euddraft project works as it is: its `.eds` or `.edd` settings file,
+your epScript (`.eps`) and Python (`.py`) plugins, and euddraft's bundled plugins (MSQC,
+chatEvent, eudTurbo, unlimiter and the rest). eudplib 0.81 and euddraft 0.11 run inside
+the browser tab, so nothing is uploaded and nothing has to be installed.
+
+Open **Tools ▸ euddraft…**, press **Choose folder…** and pick the folder that holds the
+settings file. Chrome and Edge remember the folder: next time, press **Allow access** and
+it is read again. Other browsers ask for the folder each time, and for it again after you
+change a file.
+
+The panel lists the settings file's sections and what each one loads: a file in the
+folder, a bundled plugin, or one it cannot find. A plugin from your euddraft
+installation's own `plugins` folder is not here: copy it into the project and name it with
+its extension, `[myplugin.py]`. With more than one settings file in the folder, pick one
+from the list. Then press **Compile**:
+
+- **Input** is the map open in the editor, unsaved changes included, not the file `[main]`
+  `input` names.
+- **Output**: when `[main]` `output` points inside the folder and **Write the built map to
+  … in the folder** is ticked, the built map is written there, as euddraft would write it.
+  **Save As…** saves it anywhere, and **Test Map** starts it in the game as [Test
+  Map](#test-map) does.
+- Every compile reads the folder again, so you can edit the scripts in your own editor and
+  press **Compile** again: the loop euddraft's `.edd` watch mode gives you on the desktop.
+
+The log is euddraft's own output. A script that does not compile names its file and line,
+as euddraft does, and **Stop** ends a build at once. The first compile takes a few seconds
+longer while Python and eudplib load (about 15 MB, from the same site as the editor);
+later ones start from the browser's cache.
+
+Keep editing the map you build from, not the built one: a built map's locations are
+scrambled (see [Locations](#locations)) and its triggers are eudplib's.
+
+**Not supported yet: freeze.** euddraft protects a map with freeze unless the settings
+file says `freeze : 0` under `[freeze]`. The editor cannot apply freeze, so it builds the
+map unprotected and says so in the panel and in the log. If you rely on freeze, make the
+copy you publish with euddraft itself.
+
 ## Keyboard and preferences
 
 Press F1 for a list of every shortcut. These are the ones the editor starts with; any of
