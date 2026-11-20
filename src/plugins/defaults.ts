@@ -52,6 +52,9 @@ export interface DefaultPlugin {
  */
 export const DEFAULT_REMOTE_PLUGINS: readonly DefaultPlugin[] = [
   { spec: "github:scm-js/plugin-aftermath@v0.24.0", enabled: true },
+  // This fork's: Claude reads and edits the map with you (vendored as `plugins/claude-agent`,
+  // the name the built-in it replaces had, so settings and stored choices carry over).
+  { spec: "github:dro-coding/plugin-claude-agent@v1.0.0", enabled: true },
   { spec: "github:scm-js/plugin-paint@v1.1.0", enabled: true },
   { spec: "github:scm-js/plugin-repair@v1.6.3", enabled: true },
   { spec: "github:scm-js/plugin-scm-sim@v0.20.1", enabled: true },
@@ -115,7 +118,7 @@ export const defaultPlugins = (): DefaultPlugin[] => {
 
 /**
  * A plugin a fork compiled into the bundle that stands for no remote default (this fork's
- * `builtin:claude-agent` and `builtin:euddraft`): it has no repository, so no version to
+ * `builtin:euddraft`): it has no repository, so no version to
  * check for and nothing to vendor. The remote defaults are `defaultPlugins()` without these.
  */
 export function isForkBuiltin(spec: string): boolean {

@@ -20,8 +20,6 @@
  */
 import type { PluginManifest } from "./api";
 import type { BuiltinPlugin } from "./loader";
-import agentManifest from "../agent/plugin.json";
-import agentIcon from "../agent/icon.svg?url";
 import euddraftManifest from "../euddraft/plugin.json";
 import euddraftIcon from "../euddraft/icon.svg?url";
 
@@ -52,16 +50,11 @@ for (const [path, load] of Object.entries(modules)) {
   BUILTIN_PLUGINS[name] = { manifest: { ...rest, entry: "plugin.ts" }, iconUrl, load: load as () => Promise<unknown> };
 }
 
-// This fork's own built-in, kept in `src/agent` (tracked, and type-checked with the editor)
-// rather than in the generated `plugins/` directory. It was not vendored from anywhere, so
-// `defaults.ts` lists it after the defaults and starts it on.
-BUILTIN_PLUGINS["claude-agent"] = {
-  manifest: { ...(agentManifest as PluginManifest), entry: "plugin.ts" },
-  iconUrl: agentIcon,
-  load: () => import("../agent/plugin"),
-};
-
-// The fork's euddraft compiler (`src/euddraft`), kept and listed the same way.
+// This fork's own built-in, the euddraft compiler, kept in `src/euddraft` (tracked, and
+// type-checked with the editor) rather than in the generated `plugins/` directory. It was
+// not vendored from anywhere, so `defaults.ts` lists it after the defaults and starts it on.
+// (The fork's Claude Agent is a plugin of its own, github.com/dro-coding/plugin-claude-agent,
+// and comes in through `DEFAULT_REMOTE_PLUGINS` like scm-js's defaults.)
 BUILTIN_PLUGINS["euddraft"] = {
   manifest: { ...(euddraftManifest as PluginManifest), entry: "plugin.ts" },
   iconUrl: euddraftIcon,

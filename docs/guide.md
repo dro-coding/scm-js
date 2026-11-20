@@ -1851,11 +1851,13 @@ joins the old at the edges.
 
 ## Claude Agent
 
-This copy of the editor also has **Claude Agent**: a panel where Claude reads and changes
-the open map with you, on your own Anthropic API key, with no account and no server in
-between. Open it with **Tools ▸ Claude Agent**, **Ctrl+Alt+C**, or the *Claude* cell in
-the status bar. It works separately from the scmjs.dev AI in [The AI](#the-ai); you can
-use either or both.
+This copy of the editor also starts with **Claude Agent**, a plugin
+([github.com/dro-coding/plugin-claude-agent](https://github.com/dro-coding/plugin-claude-agent)):
+a panel where Claude reads and changes the open map with you, on your own Anthropic API
+key, with no account and no server in between. Open it with **Tools ▸ Claude Agent**,
+**Ctrl+Alt+C**, or the *Claude* cell in the status bar. It works separately from the
+scmjs.dev AI in [The AI](#the-ai); you can use either or both. Any other copy of scmJS can
+have it too: **Plugins ▸ Manage Plugins…**, paste the address above, and press **Add**.
 
 Ask in plain words: "put a mineral line and a geyser at each start location", "make Player
 2 a Zerg computer", "add a trigger that gives Player 1 victory when the beacon is
@@ -1918,8 +1920,14 @@ the key field can stay empty, so nobody using the editor there needs a key of th
 
 Every change Claude makes is one step on the undo stack, named *Claude: …*, so Ctrl+Z
 takes it back like anything you did. Under each reply, **Undo these changes** takes back
-that whole reply's changes at once, as long as nothing of yours has been done on top of
-them.
+that whole reply's changes at once, as long as they are still the newest steps on the undo
+stack. Once anything is on top of them (a later reply's changes, an edit of yours, an
+undo), the button turns off, and Edit ▸ Undo reaches them instead.
+
+A conversation belongs to its map, and Claude only works on the map in front. If you bring
+another map to the front while Claude is replying, the reply stops before its next change
+and says so; go back to the map and say "continue". When Claude makes a new map for you,
+the conversation moves to the new map with it.
 
 By default Claude asks before anything that deletes or replaces existing work. Under the
 gear you can have it ask before every change, or never. **Allow all this reply** lets the
